@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<title>RetroRSS</title>
+
+<style>
+html, body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    background: #008080;
+    font-family: Tahoma, sans-serif;
+    font-size: 12px;
+}
+
+#app {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    height: 100vh;
+}
+
+#sidebar {
+    background: #d4d0c8;
+    border-right: 2px solid #404040;
+    padding: 6px;
+    overflow-y: auto;
+}
+
+#main {
+    background: white;
+    display: flex;
+    flex-direction: column;
+}
+
+#toolbar {
+    background: #d4d0c8;
+    padding: 5px;
+    display: flex;
+    gap: 5px;
+    border-bottom: 2px solid #808080;
+}
+
+#content {
+    padding: 15px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+input, button {
+    font-size: 11px;
+    padding: 3px;
+}
+
+button {
+    background: #d4d0c8;
+    border: 2px solid;
+    border-color: #fff #404040 #404040 #fff;
+    cursor: pointer;
+}
+
+button:active {
+    border-color: #404040 #fff #fff #404040;
+}
+
+.feed {
+    cursor: pointer;
+    padding: 3px;
+}
+
+.feed:hover {
+    background: #0a246a;
+    color: white;
+}
+
+.article {
+    border-bottom: 1px dotted #aaa;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+}
+
+.article h3 {
+    color: #0000ee;
+    cursor: pointer;
+    text-decoration: underline;
+    margin-bottom: 5px;
+}
+
+.article .preview {
+    color: #333;
+    cursor: pointer;
+}
+
+.article img {
+    max-width: 300px;
+    display: block;
+    margin: 10px 0;
+}
+</style>
+</head>
+
+<body>
+
+<div id="app">
+
+    <div id="sidebar">
+        <b>RSS Akışları</b><hr>
+        <div id="feedList"></div>
+    </div>
+
+    <div id="main">
+        <div id="toolbar">
+            <input id="rssUrl" placeholder="RSS URL" style="flex:1">
+            <button onclick="addFeed()">Ekle</button>
+        </div>
+
+        <div id="content">
+            <h2>RetroRSS Hazır</h2>
+            <p>CORS yok, kaçış yok.</p>
+        </div>
+    </div>
+
+</div>
+
+<script>
+let feeds = JSON.parse(localStorage.getItem("feeds")) || [];
+
+function save() {
+    localStorage.setItem("feeds", JSON.stringify(feeds));
+    renderFeeds();
+}
+
+function addFeed() {
+    const url = rssUrl.value.trim();
+    if (!url) return;
+    feeds.push(url);
+    rssUrl.value = "";
+    save();
+}
+
+function renderFeeds() {
+    feedList.innerHTML = "";
+    feeds.forEach(url => {
+        const div = document.createElement("div");
+        div.className = "feed";
+        div.textContent = url;
+        div.onclick = () => loadRSS(url);
+        feedList.appendChild(div);
+    });
+}
+
+function parseBBCode(text) {
+    return text
+        .replace(/\[b\](.*?)\[\/b\]/gi, "<b>$1</b>")
+        .replace(/\[i\](.*?)\[\/i\]/gi, "<i>$1</i>")
+        .replace(/\[img\](.*?)\[\/img\]/gi, "<img src='$1'>")
+        .replace(/\[url=(.*?)\](.*?)\[\/url\]/gi, "<a href='$1' target='_blank'>$2</a>");
+}
+
+function openReader(title, content, date, link) {
+    const win = window.open("", "_blank");
+
+    win.document.write(`
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<title>${title}</title>
+<style>
+body {
+    font-family: Tahoma, sans-serif;
+    background: white;
+    padding: 30px;
+    max-width: 900px;
+    margin: auto;
+}
+h1 {
+    border-bottom: 2px solid #000;
+}
+.meta {
+    color: #666;
+    font-size: 12px;
+    margin-bottom: 20px;
+}
+img {
+    max-width: 100%;
+    margin: 15px 0;
+}
+</style>
+</head>
+<body>
+<h1>${title}</h1>
+<div class="meta">${date}</div>
+<div>${content}</div>
+<hr>
+<p>Kaynak: <a href="${link}" target="_blank">${link}</a></p>
+</body>
+</html>
+`);
+    win.document.close();
+}
+
+async function loadRSS(url) {
+    content.innerHTML = "2004 hızında yükleniyor...";
+
+    try {
+        const res = await fetch(
+            `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(url)}`
+        );
+        const data = await res.json();
+
+        if (data.status !== "ok") {
+            content.innerHTML = "RSS okunamadı.";
+            return;
+        }
+
+        content.innerHTML = `<h2>${data.feed.title}</h2><hr>`;
+
+        data.items.forEach(item => {
+            const article = document.createElement("div");
+            article.className = "article";
+
+            const title = document.createElement("h3");
+            title.textContent = item.title;
+
+            const preview = document.createElement("div");
+            preview.className = "preview";
+            preview.innerHTML =
+                parseBBCode((item.description || "").slice(0, 250)) + "…";
+
+            const date = document.createElement("small");
+            date.textContent = item.pubDate || "";
+
+            const open = () => {
+                openReader(
+                    item.title,
+                    parseBBCode(item.description || ""),
+                    item.pubDate || "",
+                    item.link
+                );
+            };
+
+            title.addEventListener("click", open);
+            preview.addEventListener("click", open);
+
+            article.appendChild(title);
+            article.appendChild(preview);
+            article.appendChild(date);
+
+            content.appendChild(article);
+        });
+
+    } catch {
+        content.innerHTML = "Bağlantı hatası.";
+    }
+}
+
+renderFeeds();
+</script>
+
+</body>
+</html>
